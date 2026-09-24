@@ -4,9 +4,13 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import http from 'http';
+import cookieParser from 'cookie-parser';
 import { setupWsServer } from './websocket/wsServer';
 import { pool } from './db/pool';
 import { errorHandler } from './middleware/errorHandler';
+import { csrfProtection, csrfTokenGenerator } from './middleware/csrf';
+import { sanitizeMiddleware } from './middleware/sanitize';
+import { transformResponse, transformRequest } from './middleware/transform';
 
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
@@ -17,6 +21,7 @@ import scheduleRoutes from './routes/schedule';
 import noteRoutes from './routes/notes';
 import statsRoutes from './routes/statistics';
 import progressRoutes from './routes/progress';
+import adminRoutes from './routes/admin';
 
 dotenv.config();
 
@@ -39,8 +44,18 @@ app.use(cors({
   origin: allowedOrigins,
   credentials: true 
 }));
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Transform request data from camelCase to snake_case (for DB)
+app.use(transformRequest);
+
+// Transform response data from snake_case to camelCase (for frontend)
+app.use(transformResponse);
+
+// Global input sanitization (applies to all routes)
+app.use(sanitizeMiddleware);
 
 // Rate limiting
 const limiter = rateLimit({
@@ -61,6 +76,12 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
 
+// CSRF token endpoint (must be before CSRF protection)
+app.get('/api/csrf-token', csrfTokenGenerator);
+
+// Apply CSRF protection to all state-changing operations
+app.use('/api/', csrfProtection);
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -71,6 +92,7 @@ app.use('/api/schedule', scheduleRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/statistics', statsRoutes);
 app.use('/api/progress', progressRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

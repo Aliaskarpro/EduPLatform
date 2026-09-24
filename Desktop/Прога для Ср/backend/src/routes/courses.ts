@@ -46,11 +46,15 @@ router.post('/', authenticateToken, async (req: AuthRequest, res, next) => {
       return res.status(403).json({ message: 'Forbidden' });
     }
     const { title, description, level_id, total_lessons, cover_image, is_published } = req.body;
+    
+    // For teachers, automatically set teacher_id to their own ID
+    const teacher_id = req.user.role === 'teacher' ? req.user.id : req.body.teacher_id;
+    
     const result = await pool.query(`
-      INSERT INTO courses (title, description, level_id, total_lessons, cover_image, is_published)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO courses (title, description, level_id, teacher_id, total_lessons, cover_image, is_published)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
-    `, [title, description, level_id, total_lessons, cover_image, is_published ?? true]);
+    `, [title, description, level_id, teacher_id, total_lessons, cover_image, is_published ?? true]);
     res.status(201).json(result.rows[0]);
   } catch (err) { next(err); }
 });
@@ -60,7 +64,25 @@ router.put('/:id', authenticateToken, async (req: AuthRequest, res, next) => {
     if (req.user?.role !== 'admin' && req.user?.role !== 'teacher') {
       return res.status(403).json({ message: 'Forbidden' });
     }
+    
     const { id } = req.params;
+    
+    // For teachers: check if they own this course
+    if (req.user.role === 'teacher') {
+      const ownerCheck = await pool.query(
+        'SELECT teacher_id FROM courses WHERE id = $1',
+        [id]
+      );
+      
+      if (ownerCheck.rows.length === 0) {
+        return res.status(404).json({ message: 'Course not found' });
+      }
+      
+      if (ownerCheck.rows[0].teacher_id !== req.user.id) {
+        return res.status(403).json({ message: 'You can only modify your own courses' });
+      }
+    }
+    
     const { title, description, level_id, total_lessons, cover_image, is_published } = req.body;
     const result = await pool.query(`
       UPDATE courses 

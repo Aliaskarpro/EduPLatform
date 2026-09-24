@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { z } from 'zod';
 import { pool } from '../db/pool';
 import { validate } from '../middleware/validate';
 import { authenticateToken } from '../middleware/auth';
 import { AuthRequest } from '../types';
+import { sendPasswordResetEmail } from '../services/emailService';
 
 const router = Router();
 
@@ -91,8 +93,92 @@ router.post('/logout', authenticateToken, (req, res) => {
   res.json({ message: 'Logged out successfully' });
 });
 
-router.post('/forgot-password', async (req, res) => {
-  res.json({ message: 'Password reset link sent (mock)' });
+const forgotPasswordSchema = z.object({
+  body: z.object({
+    email: z.string().email()
+  })
+});
+
+router.post('/forgot-password', validate(forgotPasswordSchema), async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    // Check if user exists
+    const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    
+    // Always return success to prevent email enumeration
+    if (userResult.rows.length === 0) {
+      return res.json({ message: 'If the email exists, a password reset link has been sent' });
+    }
+
+    const userId = userResult.rows[0].id;
+    
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // Store hashed token in database
+    await pool.query(
+      'UPDATE users SET reset_token = $1, reset_token_expires = $2 WHERE id = $3',
+      [hashedToken, expiresAt, userId]
+    );
+
+    // Send email
+    await sendPasswordResetEmail(email, resetToken);
+
+    res.json({ message: 'If the email exists, a password reset link has been sent' });
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    res.status(500).json({ message: 'Failed to process request' });
+  }
+});
+
+const resetPasswordSchema = z.object({
+  body: z.object({
+    token: z.string(),
+    new_password: z.string()
+      .min(8, 'Password must be at least 8 characters')
+      .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+      .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+      .regex(/[0-9]/, 'Password must contain at least one number')
+      .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character')
+  })
+});
+
+router.post('/reset-password', validate(resetPasswordSchema), async (req, res) => {
+  try {
+    const { token, new_password } = req.body;
+    
+    // Hash the provided token to compare with stored hash
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+    
+    // Find user with valid token
+    const result = await pool.query(
+      'SELECT id FROM users WHERE reset_token = $1 AND reset_token_expires > NOW()',
+      [hashedToken]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    const userId = result.rows[0].id;
+    
+    // Hash new password
+    const hash = await bcrypt.hash(new_password, Number(process.env.BCRYPT_ROUNDS) || 12);
+    
+    // Update password and clear reset token
+    await pool.query(
+      'UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL, updated_at = NOW() WHERE id = $2',
+      [hash, userId]
+    );
+
+    res.json({ message: 'Password has been reset successfully' });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    res.status(500).json({ message: 'Failed to reset password' });
+  }
 });
 
 router.get('/me', authenticateToken, async (req: AuthRequest, res, next) => {

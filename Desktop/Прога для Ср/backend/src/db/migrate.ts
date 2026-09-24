@@ -33,6 +33,8 @@ async function migrate() {
         role VARCHAR(50) DEFAULT 'student',
         subscription_tier VARCHAR(50) DEFAULT 'free',
         is_active BOOLEAN DEFAULT true,
+        reset_token VARCHAR(255),
+        reset_token_expires TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
@@ -60,6 +62,7 @@ async function migrate() {
         title VARCHAR(255) NOT NULL,
         description TEXT,
         level_id UUID REFERENCES levels(id) ON DELETE SET NULL,
+        teacher_id UUID REFERENCES users(id) ON DELETE SET NULL,
         total_lessons INT DEFAULT 0,
         cover_image VARCHAR(255),
         is_published BOOLEAN DEFAULT true,
@@ -166,6 +169,7 @@ async function migrate() {
     // Create indexes
     await client.query(`CREATE INDEX IF NOT EXISTS idx_user_progress_user_id ON user_progress(user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_courses_level_id ON courses(level_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_courses_teacher_id ON courses(teacher_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_lessons_course_id ON lessons(course_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_schedule_user_id ON schedule(user_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_lesson_progress_user_id ON lesson_progress(user_id);`);

@@ -25,7 +25,13 @@ export const setupWsServer = (server: http.Server) => {
     }
 
     try {
-      const decoded: any = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+      const secret = process.env.JWT_SECRET;
+      if (!secret) {
+        console.error('CRITICAL: JWT_SECRET not set');
+        ws.close(1011, 'Server configuration error');
+        return;
+      }
+      const decoded: any = jwt.verify(token, secret);
       ws.userId = decoded.id;
 
       if (!clients.has(decoded.id)) {
