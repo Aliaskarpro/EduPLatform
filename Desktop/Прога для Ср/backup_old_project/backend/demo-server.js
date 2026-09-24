@@ -13,7 +13,7 @@ const PORT = 3001;
 
 // Configuration
 const JWT_SECRET = 'demo-secret-key';
-const CORS_ORIGIN = ['http://localhost:5173', 'http://localhost:3000'];
+const CORS_ORIGIN = 'http://localhost:5173';
 
 // Middleware
 app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
@@ -85,55 +85,6 @@ let courses = [
 let notes = [];
 let schedule = [];
 
-// User progress storage - каждому пользователю свой прогресс
-let userProgress = {
-  '1': { // Admin - для примера с данными
-    completedLessons: 5,
-    totalStudyTime: 120,
-    currentXp: 500,
-    currentLevel: { id: '2', name: 'Elementary', code: 'A2' },
-    weeklyProgress: [
-      { day: 'Mon', minutes: 20 },
-      { day: 'Tue', minutes: 30 },
-      { day: 'Wed', minutes: 15 },
-      { day: 'Thu', minutes: 25 },
-      { day: 'Fri', minutes: 30 },
-      { day: 'Sat', minutes: 0 },
-      { day: 'Sun', minutes: 0 },
-    ],
-  },
-  '2': { // Teacher - пустой
-    completedLessons: 0,
-    totalStudyTime: 0,
-    currentXp: 0,
-    currentLevel: { id: '1', name: 'Beginner', code: 'A1' },
-    weeklyProgress: [
-      { day: 'Mon', minutes: 0 },
-      { day: 'Tue', minutes: 0 },
-      { day: 'Wed', minutes: 0 },
-      { day: 'Thu', minutes: 0 },
-      { day: 'Fri', minutes: 0 },
-      { day: 'Sat', minutes: 0 },
-      { day: 'Sun', minutes: 0 },
-    ],
-  },
-  '3': { // Student - для примера с данными
-    completedLessons: 10,
-    totalStudyTime: 240,
-    currentXp: 1000,
-    currentLevel: { id: '2', name: 'Elementary', code: 'A2' },
-    weeklyProgress: [
-      { day: 'Mon', minutes: 40 },
-      { day: 'Tue', minutes: 50 },
-      { day: 'Wed', minutes: 30 },
-      { day: 'Thu', minutes: 60 },
-      { day: 'Fri', minutes: 40 },
-      { day: 'Sat', minutes: 20 },
-      { day: 'Sun', minutes: 0 },
-    ],
-  },
-};
-
 // Helper: Transform snake_case to camelCase
 function toCamelCase(obj) {
   if (Array.isArray(obj)) return obj.map(toCamelCase);
@@ -160,10 +111,7 @@ app.get('/api/csrf-token', (req, res) => {
 // Auth: Register
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password, first_name, last_name, firstName, lastName } = req.body;
-    // Support both snake_case and camelCase
-    const fName = first_name || firstName;
-    const lName = last_name || lastName;
+    const { email, password, firstName, lastName } = req.body;
     
     if (users.find(u => u.email === email)) {
       return res.status(400).json({ message: 'Email already in use' });
@@ -174,31 +122,14 @@ app.post('/api/auth/register', async (req, res) => {
       id: String(users.length + 1),
       email,
       password_hash: hash,
-      first_name: fName,
-      last_name: lName,
+      first_name: firstName,
+      last_name: lastName,
       role: 'student',
       is_active: true,
       created_at: new Date().toISOString(),
     };
     
     users.push(user);
-    
-    // Создаём пустой прогресс для нового пользователя
-    userProgress[user.id] = {
-      completedLessons: 0,
-      totalStudyTime: 0,
-      currentXp: 0,
-      currentLevel: { id: '1', name: 'Beginner', code: 'A1' },
-      weeklyProgress: [
-        { day: 'Mon', minutes: 0 },
-        { day: 'Tue', minutes: 0 },
-        { day: 'Wed', minutes: 0 },
-        { day: 'Thu', minutes: 0 },
-        { day: 'Fri', minutes: 0 },
-        { day: 'Sat', minutes: 0 },
-        { day: 'Sun', minutes: 0 },
-      ],
-    };
     
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
@@ -369,30 +300,21 @@ app.get('/api/statistics/dashboard', (req, res) => {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
     
-    // Получаем прогресс конкретного пользователя
-    let progress = userProgress[decoded.id];
-    
-    // Если прогресса нет (старый пользователь), создаём пустой
-    if (!progress) {
-      progress = {
-        completedLessons: 0,
-        totalStudyTime: 0,
-        currentXp: 0,
-        currentLevel: { id: '1', name: 'Beginner', code: 'A1' },
-        weeklyProgress: [
-          { day: 'Mon', minutes: 0 },
-          { day: 'Tue', minutes: 0 },
-          { day: 'Wed', minutes: 0 },
-          { day: 'Thu', minutes: 0 },
-          { day: 'Fri', minutes: 0 },
-          { day: 'Sat', minutes: 0 },
-          { day: 'Sun', minutes: 0 },
-        ],
-      };
-      userProgress[decoded.id] = progress;
-    }
-    
-    res.json(progress);
+    res.json({
+      completedLessons: 12,
+      totalStudyTime: 360,
+      currentLevel: { id: '2', name: 'Elementary', code: 'A2' },
+      currentXp: 1250,
+      weeklyProgress: [
+        { day: 'Mon', minutes: 45 },
+        { day: 'Tue', minutes: 60 },
+        { day: 'Wed', minutes: 30 },
+        { day: 'Thu', minutes: 75 },
+        { day: 'Fri', minutes: 50 },
+        { day: 'Sat', minutes: 90 },
+        { day: 'Sun', minutes: 10 },
+      ],
+    });
   } catch (err) {
     res.status(401).json({ message: 'Invalid token' });
   }
